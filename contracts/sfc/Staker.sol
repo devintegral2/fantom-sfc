@@ -283,8 +283,10 @@ contract Stakers is Ownable, StakersConstants {
     function _createStake(address dagAdrress, address sfcAddress, uint256 amount, bytes memory metadata) internal {
         require(stakerIDs[dagAdrress] == 0, "staker already exists");
         require(stakerIDs[sfcAddress] == 0, "staker already exists");
+        // ---
         require(delegations[dagAdrress].amount == 0, "already delegating");
         require(delegations[sfcAddress].amount == 0, "already delegating");
+        // ---
         require(amount >= minStake(), "insufficient amount");
 
         uint256 stakerID = ++stakersLastID;
@@ -326,8 +328,9 @@ contract Stakers is Ownable, StakersConstants {
     // update validator's SFC authentication/rewards/collateral address
     function updateStakerSfcAddress(address newSfcAddress) external {
         address oldSfcAddress = msg.sender;
-
+        // ---
         require(delegations[newSfcAddress].amount == 0, "already delegating");
+        // ---
         require(oldSfcAddress != newSfcAddress, "the same address");
 
         uint256 stakerID = _sfcAddressToStakerID(oldSfcAddress);
@@ -395,9 +398,10 @@ contract Stakers is Ownable, StakersConstants {
         require(stakers[to].status == OK_STATUS, "staker should be active");
         require(stakers[to].deactivatedTime == 0, "staker is deactivated");
         require(msg.value >= minDelegation(), "insufficient amount for delegation");
-        require(delegations[delegator].amount == 0, "delegation already exists");
-        require(stakerIDs[delegator] == 0, "already staking");
-        require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(msg.value), "staker's limit is exceeded");
+        //require(delegations[delegator].amount == 0, "delegation already exists");
+        //require(stakerIDs[delegator] == 0, "already staking");
+
+        //require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(msg.value), "staker's limit is exceeded");
 
         Delegation memory newDelegation;
         newDelegation.createdEpoch = currentEpoch();
@@ -428,7 +432,9 @@ contract Stakers is Ownable, StakersConstants {
         uint256 to = delegations[delegator].toStakerID;
 
         require(msg.value >= minDelegationIncrease(), "insufficient amount");
-        require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(msg.value), "staker's limit is exceeded");
+        // ---
+        // require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(msg.value), "staker's limit is exceeded");
+        // ---
         require(stakers[to].deactivatedTime == 0, "staker is deactivated");
         require(stakers[to].status == OK_STATUS, "staker should be active");
 
@@ -675,8 +681,9 @@ contract Stakers is Ownable, StakersConstants {
         uint256 totalAmount = stakers[stakerID].stakeAmount;
         require(amount + minStake() <= totalAmount, "must leave at least minStake");
         uint256 newAmount = totalAmount - amount;
-        require(maxDelegatedLimit(newAmount) >= stakers[stakerID].delegatedMe, "too much delegations");
-
+        // ---
+        // require(maxDelegatedLimit(newAmount) >= stakers[stakerID].delegatedMe, "too much delegations");
+        // ---
         require(withdrawalRequests[stakerSfcAddr][wrID].amount == 0, "wrID already exists");
 
         _mayBurnRewardsOnDeactivation(false, stakerID, stakerSfcAddr, amount, totalAmount);
