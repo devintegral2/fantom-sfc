@@ -437,7 +437,7 @@ contract Stakers is Ownable, StakersConstants {
     // Returns the pending rewards for a given delegator, first calculated epoch, last calculated epoch
     // _fromEpoch is starting epoch which rewards are calculated (including). If 0, then it's lowest not claimed epoch
     // maxEpochs is maximum number of epoch to calc rewards for. Set it to your chunk size.
-    function calcDelegationRewards(address delegator, address stakerID, uint256 _fromEpoch, uint256 maxEpochs) public view returns (uint256, uint256, uint256) {
+    function calcDelegationRewards(address delegator, uint256 stakerID, uint256 _fromEpoch, uint256 maxEpochs) public view returns (uint256, uint256, uint256) {
         _checkAndUpgradeDelegateStorage(delegator);
         uint256 fromEpoch = withDefault(_fromEpoch, delegations_v2[delegator][stakerID].paidUntilEpoch + 1);
         assert(delegations_v2[delegator][stakerID].deactivatedTime == 0);
@@ -490,7 +490,7 @@ contract Stakers is Ownable, StakersConstants {
 
     // Claim the pending rewards for a given delegator (sender)
     // maxEpochs is maximum number of epoch to calc rewards for. Set it to your chunk size.
-    function claimDelegationRewards(uint256 maxEpochs, address stakerID) external {
+    function claimDelegationRewards(uint256 maxEpochs, uint256 stakerID) external {
         address payable delegator = msg.sender;
         _checkAndUpgradeDelegateStorage(delegator);
 
@@ -666,7 +666,7 @@ contract Stakers is Ownable, StakersConstants {
     event DeactivatedDelegation(address indexed delegator, uint256 indexed stakerID);
 
     // deactivate delegation, to be able to withdraw later
-    function prepareToWithdrawDelegation(address stakerID) external {
+    function prepareToWithdrawDelegation(uint256 stakerID) external {
         address delegator = msg.sender;
         _checkAndUpgradeDelegateStorage(delegator);
         require(delegations_v2[delegator][stakerID].amount != 0, "delegation doesn't exist");
@@ -687,7 +687,7 @@ contract Stakers is Ownable, StakersConstants {
         emit DeactivatedDelegation(delegator, stakerID);
     }
 
-    function prepareToWithdrawDelegationPartial(uint256 wrID, address stakerID, uint256 amount) external {
+    function prepareToWithdrawDelegationPartial(uint256 wrID, uint256 stakerID, uint256 amount) external {
         address payable delegator = msg.sender;
         _checkAndUpgradeDelegateStorage(delegator);
         require(delegations_v2[delegator][stakerID].amount != 0, "delegation doesn't exist");

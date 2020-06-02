@@ -92,9 +92,10 @@ contract UnitTestStakers is Stakers {
         stakers[stakerID].paidUntilEpoch = currentSealedEpoch;
     }
 
-    function discardDelegationRewards() public {
-        require(delegations[msg.sender].amount != 0, "delegation doesn't exist");
-        delegations[msg.sender].paidUntilEpoch = currentSealedEpoch;
+    function discardDelegationRewards(uint256 stakerID) public {
+        _checkAndUpgradeDelegateStorage(msg.sender);
+        require(delegations_v2[msg.sender][stakerID].amount != 0, "delegation doesn't exist");
+        delegations_v2[msg.sender][stakerID].paidUntilEpoch = currentSealedEpoch;
     }
 
     function rewardsAllowed() public view returns (bool) {
