@@ -139,7 +139,7 @@ contract Stakers is Ownable, StakersConstants {
     }
 
     mapping(address => mapping(uint256 => WithdrawalRequest)) public withdrawalRequests;
-    mapping(address => mapping (uint256 => Delegation)) public delegations_v2; // delegator address, staker ID -> delegations
+    mapping(address => mapping(uint256 => Delegation)) public delegations_v2; // delegator address, staker ID -> delegations
 
     /*
     Getters
@@ -260,7 +260,9 @@ contract Stakers is Ownable, StakersConstants {
     function updateStakerSfcAddress(address newSfcAddress) external {
         address oldSfcAddress = msg.sender;
 
-       // require(delegations[newSfcAddress].amount == 0, "already delegating"); // TODO: check it
+       // require(delegations[newSfcAddress].amount == 0, "already delegating"); // <-- TODO: check it
+        _checkAndUpgradeDelegateStorage(newSfcAddress);                          // <--
+        _checkAndUpgradeDelegateStorage(oldSfcAddress);                          // <--
         require(oldSfcAddress != newSfcAddress, "the same address");
 
         uint256 stakerID = _sfcAddressToStakerID(oldSfcAddress);
@@ -328,10 +330,10 @@ contract Stakers is Ownable, StakersConstants {
         require(stakers[to].status == OK_STATUS, "staker should be active");
         require(stakers[to].deactivatedTime == 0, "staker is deactivated");
         require(msg.value >= minDelegation(), "insufficient amount for delegation");
-        //require(delegations[delegator][to].amount == 0, "delegation already exists");
-        //require(stakerIDs[delegator] == 0, "already staking");
+        require(delegations_v2[delegator][to].amount == 0, "delegation already exists");
+        require(stakerIDs[delegator] == 0, "already staking");
 
-        //require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(msg.value), "staker's limit is exceeded");
+        require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(msg.value), "staker's limit is exceeded");
 
         Delegation memory newDelegation;
         newDelegation.createdEpoch = currentEpoch();
@@ -351,7 +353,7 @@ contract Stakers is Ownable, StakersConstants {
     event IncreasedDelegation(address indexed delegator, uint256 indexed stakerID, uint256 newAmount, uint256 diff);
 
     // Increase msg.sender's delegation by msg.value
-    function increaseDelegation(address to) external payable {
+    function increaseDelegation(uint256 to) external payable {
         address delegator = msg.sender;
         _checkAndUpgradeDelegateStorage(delegator);
 
@@ -438,7 +440,7 @@ contract Stakers is Ownable, StakersConstants {
     // _fromEpoch is starting epoch which rewards are calculated (including). If 0, then it's lowest not claimed epoch
     // maxEpochs is maximum number of epoch to calc rewards for. Set it to your chunk size.
     function calcDelegationRewards(address delegator, uint256 stakerID, uint256 _fromEpoch, uint256 maxEpochs) public view returns (uint256, uint256, uint256) {
-        _checkAndUpgradeDelegateStorage(delegator);
+        require(delegations[delegator].amount == 0, "old version delegation, please update");
         uint256 fromEpoch = withDefault(_fromEpoch, delegations_v2[delegator][stakerID].paidUntilEpoch + 1);
         assert(delegations_v2[delegator][stakerID].deactivatedTime == 0);
 
@@ -739,7 +741,7 @@ contract Stakers is Ownable, StakersConstants {
         uint256 delegationAmount = delegations_v2[delegator][stakerID].amount;
         delete delegations_v2[delegator][stakerID];
 
-      //  delegationsNum--; // TODO: Check, if delegations[delegator][stakerID] last then decrease
+        delegationsNum--;
         delegationsTotalAmount = delegationsTotalAmount.sub(delegationAmount);
         // It's important that we transfer after erasing (protection against Re-Entrancy)
         if (isCheater == false) {
