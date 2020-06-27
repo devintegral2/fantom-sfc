@@ -355,6 +355,33 @@ contract Stakers is Ownable, StakersConstants {
         emit CreatedDelegation(delegator, to, msg.value);
     }
 
+    event ChangeDelegation(address indexed delegator, uint256 indexed fromStakerID, uint256 indexed toStakerID);
+
+    function changeDelegation(uint256 from, uint256 to) external {
+        address delegator = msg.sender;
+        require(delegations_v2[delegator][to].amount == 0, "delegation already exists");
+        _checkAndUpgradeDelegateStorage(delegator);
+        _checkNotDeactivatedDelegation(delegator, from);
+        _checkClaimedDelegation(delegator, from);
+        Delegation memory oldDelegation = delegations_v2[delegator][from];
+        require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(oldDelegation.amount), "staker's limit is exceeded");
+        _checkActiveStaker(to);
+
+        if (lockedDelegations[delegator][from].endTime > block.timestamp) {
+            require(lockedStakes[to].endTime >= lockedDelegations[delegator][from].endTime, "staker's locking will finish first");
+        }
+
+        Delegation memory newDelegation;
+        newDelegation.createdEpoch = oldDelegation.createdEpoch;
+        newDelegation.createdTime = oldDelegation.createdTime;
+        newDelegation.amount = oldDelegation.amount;
+        newDelegation.toStakerID = to;
+        newDelegation.paidUntilEpoch = oldDelegation.paidUntilEpoch;
+        delegations_v2[delegator][to] = newDelegation;
+
+        emit ChangeDelegation(delegator, from, to);
+    }
+
     event IncreasedDelegation(address indexed delegator, uint256 indexed stakerID, uint256 newAmount, uint256 diff);
 
     // Increase msg.sender's delegation by msg.value
@@ -364,8 +391,6 @@ contract Stakers is Ownable, StakersConstants {
         _checkNotDeactivatedDelegation(delegator, to);
         // previous rewards must be claimed because rewards calculation depends on current delegation amount
         _checkClaimedDelegation(delegator, to);
-
-        delegations_v2[delegator][to].toStakerID;
 
         require(msg.value >= minDelegationIncrease(), "insufficient amount");
         require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(msg.value), "staker's limit is exceeded");
