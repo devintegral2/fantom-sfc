@@ -369,15 +369,17 @@ contract Stakers is Ownable, StakersConstants {
 
         if (lockedDelegations[delegator][from].endTime > block.timestamp) {
             _checkEndOfStakersLock(to, lockedDelegations[delegator][from].endTime);
+            lockedDelegations[delegator][to] = lockedDelegations[delegator][from];
         }
 
-        Delegation memory newDelegation;
-        newDelegation.createdEpoch = oldDelegation.createdEpoch;
-        newDelegation.createdTime = oldDelegation.createdTime;
-        newDelegation.amount = oldDelegation.amount;
-        newDelegation.toStakerID = to;
-        newDelegation.paidUntilEpoch = oldDelegation.paidUntilEpoch;
-        delegations_v2[delegator][to] = newDelegation;
+        if (lockedDelegations[delegator][from].endTime > 0) {
+            delete lockedDelegations[delegator][from];
+        }
+
+        delegations_v2[delegator][to] = oldDelegation;
+        delegations_v2[delegator][to].toStakerID = to;
+
+        delete delegations_v2[delegator][from];
 
         emit ChangeDelegation(delegator, from, to);
     }
@@ -1030,7 +1032,7 @@ contract Stakers is Ownable, StakersConstants {
         require(maxDelegatedLimit(stakers[stakerID].stakeAmount) >= stakers[stakerID].delegatedMe.add(amount), "staker's limit is exceeded");
     }
 
-    function _checkMinAmount(uint256 amount, uint256 minAmount) view internal {
+    function _checkMinAmount(uint256 amount, uint256 minAmount) pure internal {
         require(amount >= minAmount, "insufficient amount");
     }
 
