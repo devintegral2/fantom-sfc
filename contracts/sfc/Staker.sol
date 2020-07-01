@@ -227,7 +227,7 @@ contract Stakers is Ownable, StakersConstants {
         require(stakerIDs[dagAddress] == 0 && stakerIDs[sfcAddress] == 0, "staker already exists");
 //        require(delegations[dagAdrress].amount == 0, "already delegating"); // TODO: check it
 //        require(delegations[sfcAddress].amount == 0, "already delegating");
-        require(amount >= minStake(), "insufficient amount");
+        _checkMinAmount(amount, minStake());
 
         uint256 stakerID = ++stakersLastID;
         stakerIDs[dagAddress] = stakerID;
@@ -312,7 +312,7 @@ contract Stakers is Ownable, StakersConstants {
     function increaseStake() external payable {
         uint256 stakerID = _sfcAddressToStakerID(msg.sender);
 
-        require(msg.value >= minStakeIncrease(), "insufficient amount");
+        _checkMinAmount(msg.value, minStakeIncrease());
         _checkActiveStaker(stakerID);
 
         uint256 newAmount = stakers[stakerID].stakeAmount.add(msg.value);
@@ -334,11 +334,11 @@ contract Stakers is Ownable, StakersConstants {
         address delegator = msg.sender;
 
         _checkActiveStaker(to);
-        require(msg.value >= minDelegation(), "insufficient amount");
-        require(delegations_v2[delegator][to].amount == 0, "delegation already exists");
+        _checkMinAmount(msg.value, minDelegation());
+        _checkExistDelegation(delegator, to, true);
         require(stakerIDs[delegator] == 0, "already staking");
 
-        require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(msg.value), "staker's limit is exceeded");
+        _checkStakerLimit(to, msg.value);
 
         Delegation memory newDelegation;
         newDelegation.createdEpoch = currentEpoch();
@@ -359,16 +359,16 @@ contract Stakers is Ownable, StakersConstants {
 
     function changeDelegation(uint256 from, uint256 to) external {
         address delegator = msg.sender;
-        require(delegations_v2[delegator][to].amount == 0, "delegation already exists");
+        _checkExistDelegation(delegator, to, true);
         _checkAndUpgradeDelegateStorage(delegator);
         _checkNotDeactivatedDelegation(delegator, from);
         _checkClaimedDelegation(delegator, from);
         Delegation memory oldDelegation = delegations_v2[delegator][from];
-        require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(oldDelegation.amount), "staker's limit is exceeded");
+        _checkStakerLimit(to, oldDelegation.amount);
         _checkActiveStaker(to);
 
         if (lockedDelegations[delegator][from].endTime > block.timestamp) {
-            require(lockedStakes[to].endTime >= lockedDelegations[delegator][from].endTime, "staker's locking will finish first");
+            _checkEndOfStakersLock(to, lockedDelegations[delegator][from].endTime);
         }
 
         Delegation memory newDelegation;
@@ -392,8 +392,8 @@ contract Stakers is Ownable, StakersConstants {
         // previous rewards must be claimed because rewards calculation depends on current delegation amount
         _checkClaimedDelegation(delegator, to);
 
-        require(msg.value >= minDelegationIncrease(), "insufficient amount");
-        require(maxDelegatedLimit(stakers[to].stakeAmount) >= stakers[to].delegatedMe.add(msg.value), "staker's limit is exceeded");
+        _checkMinAmount(msg.value, minDelegationIncrease());
+        _checkStakerLimit(to, msg.value);
         _checkActiveStaker(to);
 
         uint256 newAmount = delegations_v2[delegator][to].amount.add(msg.value);
@@ -689,8 +689,9 @@ contract Stakers is Ownable, StakersConstants {
         address payable stakerSfcAddr = msg.sender;
         uint256 stakerID = _sfcAddressToStakerID(stakerSfcAddr);
         require(stakers[stakerID].deactivatedTime != 0, "staker wasn't deactivated");
-        require(block.timestamp >= stakers[stakerID].deactivatedTime + stakeLockPeriodTime(), "not enough time passed");
-        require(currentEpoch() >= stakers[stakerID].deactivatedEpoch + stakeLockPeriodEpochs(), "not enough epochs passed");
+        _checkPassedTimeAndEpoch(
+            stakers[stakerID].deactivatedTime + stakeLockPeriodTime(),
+            stakers[stakerID].deactivatedEpoch + stakeLockPeriodEpochs());
 
         address stakerDagAddr = stakers[stakerID].dagAddress;
         uint256 stake = stakers[stakerID].stakeAmount;
@@ -840,8 +841,9 @@ contract Stakers is Ownable, StakersConstants {
         require(delegation.deactivatedTime != 0, "delegation wasn't deactivated");
         if (stakers[stakerID].stakeAmount != 0) {
             // if validator hasn't withdrawn already, then don't allow to withdraw delegation right away
-            require(block.timestamp >= delegation.deactivatedTime + delegationLockPeriodTime(), "not enough time passed");
-            require(currentEpoch() >= delegation.deactivatedEpoch + delegationLockPeriodEpochs(), "not enough epochs passed");
+            _checkPassedTimeAndEpoch(
+                delegation.deactivatedTime + delegationLockPeriodTime(),
+                delegation.deactivatedEpoch + delegationLockPeriodEpochs());
         }
         uint256 penalty = 0;
         bool isCheater = stakers[stakerID].status & CHEATER_MASK != 0;
@@ -875,11 +877,13 @@ contract Stakers is Ownable, StakersConstants {
         uint256 stakerID = withdrawalRequests[auth][wrID].stakerID;
         if (delegation && stakers[stakerID].stakeAmount != 0) {
             // if validator hasn't withdrawn already, then don't allow to withdraw delegation right away
-            require(block.timestamp >= withdrawalRequests[auth][wrID].time + delegationLockPeriodTime(), "not enough time passed");
-            require(currentEpoch() >= withdrawalRequests[auth][wrID].epoch + delegationLockPeriodEpochs(), "not enough epochs passed");
+            _checkPassedTimeAndEpoch(
+                withdrawalRequests[auth][wrID].time + delegationLockPeriodTime(),
+                withdrawalRequests[auth][wrID].epoch + delegationLockPeriodEpochs());
         } else if (!delegation) {
-            require(block.timestamp >= withdrawalRequests[auth][wrID].time + stakeLockPeriodTime(), "not enough time passed");
-            require(currentEpoch() >= withdrawalRequests[auth][wrID].epoch + stakeLockPeriodEpochs(), "not enough epochs passed");
+            _checkPassedTimeAndEpoch(
+                withdrawalRequests[auth][wrID].time + stakeLockPeriodTime(),
+                withdrawalRequests[auth][wrID].epoch + stakeLockPeriodEpochs());
         }
 
         uint256 penalty = 0;
@@ -941,11 +945,11 @@ contract Stakers is Ownable, StakersConstants {
     function lockUpDelegation(uint256 lockDuration, uint256 stakerID) external {
         require(firstLockedUpEpoch != 0 && firstLockedUpEpoch <= currentSealedEpoch.add(1), "feature was not activated");
         address delegator = msg.sender;
-        _checkExistDelegation(delegator, stakerID);
+        _checkExistDelegation(delegator, stakerID, false);
         require(stakers[stakerID].status == OK_STATUS, "staker should be active");
         require(lockDuration >= 86400 * 14 && lockDuration <= 86400 * 365, "incorrect duration");
         uint256 endTime = block.timestamp.add(lockDuration);
-        require(lockedStakes[stakerID].endTime >= endTime, "staker's locking will finish first");
+        _checkEndOfStakersLock(stakerID, endTime);
         require(lockedDelegations[delegator][stakerID].endTime < endTime, "already locked up");
         lockedDelegations[delegator][stakerID] = LockedAmount(currentEpoch(), endTime);
         emit LockingDelegation(delegator, stakerID, currentEpoch(), endTime);
@@ -956,7 +960,7 @@ contract Stakers is Ownable, StakersConstants {
     // syncDelegator updates the delegator data on node, if it differs for some reason
     function _syncDelegator(address delegator, uint256 stakerID) public {
         _checkAndUpgradeDelegateStorage(delegator);
-        _checkExistDelegation(delegator, stakerID);
+        _checkExistDelegation(delegator, stakerID, false);
         // emit special log for node
         emit UpdatedDelegation(delegator, stakerID, stakerID, delegations_v2[delegator][stakerID].amount);
     }
@@ -991,12 +995,16 @@ contract Stakers is Ownable, StakersConstants {
         require(stakers[to].status == OK_STATUS, "staker should be active");
     }
 
-    function _checkExistDelegation(address delegator, uint256 toStaker) view internal {
-        require(delegations_v2[delegator][toStaker].amount != 0, "delegation doesn't exist");
+    function _checkExistDelegation(address delegator, uint256 toStaker, bool exist) view internal {
+        if (exist) {
+            require(delegations_v2[delegator][toStaker].amount == 0, "delegation already exists");
+        } else {
+            require(delegations_v2[delegator][toStaker].amount != 0, "delegation doesn't exist");
+        }
     }
 
     function _checkNotDeactivatedDelegation(address delegator, uint256 toStaker) view internal {
-        _checkExistDelegation(delegator, toStaker);
+        _checkExistDelegation(delegator, toStaker, false);
         require(delegations_v2[delegator][toStaker].deactivatedTime == 0, "delegation is deactivated");
     }
 
@@ -1012,6 +1020,23 @@ contract Stakers is Ownable, StakersConstants {
         require(paidUntilEpoch < fromEpoch, "epoch is already paid");
         require(fromEpoch <= currentSealedEpoch, "future epoch");
         require(untilEpoch >= fromEpoch, "no epochs claimed");
+    }
+
+    function _checkEndOfStakersLock(uint256 stakerID, uint256 endTime) view internal {
+        require(lockedStakes[stakerID].endTime >= endTime, "staker's locking will finish first");
+    }
+
+    function _checkStakerLimit(uint256 stakerID, uint256 amount) view internal {
+        require(maxDelegatedLimit(stakers[stakerID].stakeAmount) >= stakers[stakerID].delegatedMe.add(amount), "staker's limit is exceeded");
+    }
+
+    function _checkMinAmount(uint256 amount, uint256 minAmount) view internal {
+        require(amount >= minAmount, "insufficient amount");
+    }
+
+    function _checkPassedTimeAndEpoch(uint256 timestamp, uint256 epochNum) view internal {
+        require(block.timestamp >= timestamp, "not enough time passed");
+        require(currentEpoch() >= epochNum, "not enough epochs passed");
     }
 
     function _checkAndUpgradeDelegateStorage(address delegator) internal {
